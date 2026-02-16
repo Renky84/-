@@ -24,14 +24,13 @@ jobs:
         with:
           node-version: 20
 
-    - name: Install
-  working-directory: client
-  run: npm ci
+      - name: Install
+        working-directory: client
+        run: npm ci
 
- - name: Build
-  working-directory: client
-  run: npm run build
-
+      - name: Build
+        working-directory: client
+        run: npm run build
       - uses: actions/configure-pages@v4
 
       - uses: actions/upload-pages-artifact@v3
