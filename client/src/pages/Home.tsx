@@ -23,6 +23,7 @@ export default function Home() {
     addMember,
     updateMember,
     deleteMember,
+    deleteAllMembers, // ✅ 追加
     updateEqSettings,
     importFromCSV,
     exportToCSV,
@@ -31,6 +32,14 @@ export default function Home() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("members");
   const [showMobileSettings, setShowMobileSettings] = useState(false);
+  // ✅ 全削除
+  const handleDeleteAllMembers = () => {
+    // members は useMembers の state なので、useMembers 側に全削除関数が必要
+    // （次の②で追加する）
+    deleteAllMembers();
+    setSelectedMemberId(null);
+    setShowMobileSettings(false);
+  };
 
   const selectedMember = members.find((m) => m.id === selectedMemberId) ?? null;
 
@@ -79,17 +88,19 @@ export default function Home() {
       {/* デスクトップ用レイアウト */}
       <main className="flex-1 hidden md:flex overflow-hidden">
         {/* 左サイドバー: 成員リスト */}
-        <aside className="w-64 border-r border-border flex-shrink-0">
-          <MemberList
-            members={members}
-            selectedMemberId={selectedMemberId}
-            onSelectMember={setSelectedMemberId}
-            onAddMember={addMember}
-            onDeleteMember={deleteMember}
-            onImportCSV={importFromCSV}
-            onExportCSV={exportToCSV}
-          />
-        </aside>
+       <aside className="w-64 border-r border-border flex-shrink-0">
+  <MemberList
+    members={members}
+    selectedMemberId={selectedMemberId}
+    onSelectMember={setSelectedMemberId}
+    onAddMember={addMember}
+    onDeleteMember={deleteMember}
+    onImportCSV={importFromCSV}
+    onExportCSV={exportToCSV}
+    onDeleteAllMembers={handleDeleteAllMembers}
+  />
+</aside>
+
 
         {/* 中央: 声の大きさグラフ */}
         <section className="flex-1 flex flex-col overflow-hidden p-4">
@@ -192,6 +203,7 @@ export default function Home() {
                 onImportCSV={importFromCSV}
                 onExportCSV={exportToCSV}
                 isMobile
+onDeleteAllMembers={handleDeleteAllMembers}
               />
             </div>
           )}

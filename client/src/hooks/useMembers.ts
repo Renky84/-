@@ -138,10 +138,11 @@ export function useMembers() {
     return [header, ...rows].join("\n");
   }, [members]);
 
-  // 全データをクリア
-  const clearAll = useCallback(() => {
-    setMembers([]);
-  }, []);
+// ✅ 全メンバー削除（全データクリア）
+const deleteAllMembers = useCallback(() => {
+  setMembers([]);
+  localStorage.removeItem(STORAGE_KEY); // ✅ ローカルストレージも削除（おすすめ）
+}, []);
 
   return {
     members,
@@ -152,6 +153,6 @@ export function useMembers() {
     updateEqSettings,
     importFromCSV,
     exportToCSV,
-    clearAll,
+   deleteAllMembers,
   };
 }
