@@ -1,14 +1,13 @@
-import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/-/",
+  // ✅ Vercel では "/" にする（GitHub Pages用の "/-/" は使わない）
+  base: "/",
 
-  // ✅ アプリ本体は client
-  root: path.resolve(import.meta.dirname, "client"),
-
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
 
   resolve: {
     alias: {
@@ -16,8 +15,11 @@ export default defineConfig({
     },
   },
 
+  // ✅ Vite のルートは client
+  root: path.resolve(import.meta.dirname, "client"),
+
+  // ✅ 出力はリポジトリ直下 dist（Vercelの Output Directory を dist に）
   build: {
-    // ✅ 出力はリポジトリ直下 dist（Vercelの Output Directory=dist と一致）
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
   },
