@@ -1,8 +1,12 @@
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// client/src/lib/pdfText.ts
+// ✅ Vercel + Vite 安定版（pdfjs legacy + worker?url）
+
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+import workerSrc from "pdfjs-dist/legacy/build/pdf.worker?url";
 
 // Vite用：workerのURLをバンドラに解決させる
-GlobalWorkerOptions.workerSrc = workerSrc;
+// @ts-expect-error pdfjsLib型の差異吸収
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 export type PdfExtractMethod = "pdfjs" | "ocr" | "mixed";
 
@@ -32,14 +36,13 @@ type ExtractOptions = {
   minTotalChars?: number;
 
   // ✅ OCR設定
-  ocrLang?: string;         // "jpn"
-  tessdataPath?: string;    // "/tessdata"
-  ocrScale?: number;        // 2.0〜3.0
+  ocrLang?: string; // "jpn"
+  tessdataPath?: string; // "/tessdata"
+  ocrScale?: number; // 2.0〜3.0
 
   // ✅ 進捗表示
   onProgress?: (msg: string) => void;
 };
-
 
 const defaultOpts: Required<
   Pick<
@@ -69,17 +72,21 @@ function isMostlyEmptyText(s: string) {
   return t.length === 0;
 }
 
-async function extractPdfjsTextPerPage(pdf: any, onProgress?: (m: string) => void) {
+async function extractPdfjsTextPerPage(
+  pdf: any,
+  onProgress?: (m: string) => void
+) {
   const pages: { page: number; text: string }[] = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     onProgress?.(`pdfjs: extracting text page ${p}/${pdf.numPages}`);
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    const strings = content.items
-      .map((it: any) => (typeof it.str === "string" ? it.str : ""))
+
+    const strings = (content.items ?? [])
+      .map((it: any) => (typeof it?.str === "string" ? it.str : ""))
       .filter(Boolean);
 
-    // ここは join(" ") でOK（表の崩れは nameExtract 側で吸収）
+    // join(" ") でOK（表の崩れは nameExtract 側で吸収）
     const text = strings.join(" ").trim();
     pages.push({ page: p, text });
   }
@@ -136,12 +143,14 @@ async function getTesseractWorker(
       logger: (m: any) => {
         if (m?.status) {
           const pct =
-            typeof m.progress === "number" ? ` ${(m.progress * 100).toFixed(0)}%` : "";
+            typeof m.progress === "number"
+              ? ` ${(m.progress * 100).toFixed(0)}%`
+              : "";
           onProgress?.(`ocr: ${m.status}${pct}`);
         }
       },
       // ✅ 言語データの配置場所（client/public/tessdata）
-      // 例: /tessdata/jpn.traineddata.gz
+      // 例: /tessdata/jpn.traineddata(.gz)
       langPath: opts.tessdataPath,
     });
 
@@ -174,17 +183,22 @@ async function ocrImageToText(
   return { text, confidence: conf };
 }
 
-
 /**
  * 新：デバッグとOCR分岐込み
  */
-export async function extractPdfTextDetailed(file: File, options: ExtractOptions = {}): Promise<PdfExtractResult> {
+export async function extractPdfTextDetailed(
+  file: File,
+  options: ExtractOptions = {}
+): Promise<PdfExtractResult> {
   const opts = { ...defaultOpts, ...options };
   const onProgress = opts.onProgress;
 
   onProgress?.("loading pdf…");
   const buf = await file.arrayBuffer();
-  const pdf = await getDocument({ data: buf }).promise;
+
+  // ✅ getDocument は legacy pdfjsLib から呼ぶ
+  const loadingTask = (pdfjsLib as any).getDocument({ data: buf });
+  const pdf = await loadingTask.promise;
 
   const pageCount = pdf.numPages;
 
@@ -194,7 +208,10 @@ export async function extractPdfTextDetailed(file: File, options: ExtractOptions
   const pageInfos: PdfExtractPageInfo[] = [];
   const finalTexts: string[] = [];
 
-  const totalPdfjsChars = pdfjsPages.reduce((sum, p) => sum + (p.text?.replace(/\s+/g, "").length ?? 0), 0);
+  const totalPdfjsChars = pdfjsPages.reduce(
+    (sum, p) => sum + ((p.text ?? "").replace(/\s+/g, "").length ?? 0),
+    0
+  );
 
   // 分岐：
   // - ocrPerPage=true: ページごとに「少ないページだけ」OCR
@@ -220,10 +237,24 @@ export async function extractPdfTextDetailed(file: File, options: ExtractOptions
 
     // 全部OCR
     for (let p = 1; p <= pageCount; p++) {
-      const img = await renderPageToImageDataUrl(pdf, p, opts.ocrScale, onProgress);
-      const { text: ocrText, confidence } = await ocrImageToText(img, { ocrLang: opts.ocrLang, tessdataPath: opts.tessdataPath }, onProgress);
+      const img = await renderPageToImageDataUrl(
+        pdf,
+        p,
+        opts.ocrScale,
+        onProgress
+      );
+      const { text: ocrText, confidence } = await ocrImageToText(
+        img,
+        { ocrLang: opts.ocrLang, tessdataPath: opts.tessdataPath },
+        onProgress
+      );
       finalTexts.push(ocrText);
-      pageInfos.push({ page: p, textLen: ocrText.length, usedOcr: true, ocrConfidence: confidence });
+      pageInfos.push({
+        page: p,
+        textLen: ocrText.length,
+        usedOcr: true,
+        ocrConfidence: confidence,
+      });
     }
     const text = finalTexts.join("\n");
     return {
@@ -253,15 +284,30 @@ export async function extractPdfTextDetailed(file: File, options: ExtractOptions
     // OCRへ
     usedOcrAny = true;
     onProgress?.(`fallback to OCR: page ${p.page}/${pageCount}`);
-    const img = await renderPageToImageDataUrl(pdf, p.page, opts.ocrScale, onProgress);
-    const { text: ocrText, confidence } = await ocrImageToText(img, { ocrLang: opts.ocrLang, tessdataPath: opts.tessdataPath }, onProgress);
+    const img = await renderPageToImageDataUrl(
+      pdf,
+      p.page,
+      opts.ocrScale,
+      onProgress
+    );
+    const { text: ocrText, confidence } = await ocrImageToText(
+      img,
+      { ocrLang: opts.ocrLang, tessdataPath: opts.tessdataPath },
+      onProgress
+    );
 
     finalTexts.push(ocrText);
-    pageInfos.push({ page: p.page, textLen: ocrText.length, usedOcr: true, ocrConfidence: confidence });
+    pageInfos.push({
+      page: p.page,
+      textLen: ocrText.length,
+      usedOcr: true,
+      ocrConfidence: confidence,
+    });
   }
 
   const text = finalTexts.join("\n");
-  const method: PdfExtractMethod = usedOcrAny && usedPdfjsAny ? "mixed" : usedOcrAny ? "ocr" : "pdfjs";
+  const method: PdfExtractMethod =
+    usedOcrAny && usedPdfjsAny ? "mixed" : usedOcrAny ? "ocr" : "pdfjs";
 
   return {
     text,
